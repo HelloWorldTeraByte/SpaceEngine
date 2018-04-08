@@ -36,7 +36,7 @@ Object *object_create(char *path, SDL_Renderer *render, SDL_Window *window, floa
     Object *plnt = malloc(sizeof(Object));
     SDL_Surface *bmp = IMG_Load(path);
     if (!bmp) {
-        perror("Cannot fasdfdsind bmp");
+        perror("Cannot find image");
         SDL_Quit();
     }
 
@@ -78,6 +78,16 @@ Vector2 vector2_add(Vector2 a, Vector2 b)
     result.y = a.y + b.y;
 }
 
+Uint64 NOW ;
+Uint64 LAST = 0;
+double delta_time = 0;
+
+
+void add_force(GameObjects *gs, int index)
+{
+
+}
+
 int update_physics(GameObjects *gs)
 {
     Vector2 tmp;
@@ -88,35 +98,43 @@ int update_physics(GameObjects *gs)
     }
 
     for(int i = 0; i < 3; i++) {
-        printf("\n");
         for(int j = i; j < 3; j++) {
             Object *plnt1 = gs->objects[i];
             Object *plnt2 = gs->objects[j];
-            float x_diff = plnt1->pos.x - plnt2->pos.x;
-            float y_diff = plnt1->pos.y - plnt2->pos.y;
+            float x_diff = plnt2->pos.x - plnt1->pos.x;
+            float y_diff = plnt2->pos.y - plnt1->pos.y;
 
             if(i !=j) {
                 double force_x = C_BG * plnt1->mass * plnt2->mass / x_diff;
                 float force_y = C_BG * plnt1->mass * plnt2->mass / y_diff;
-                printf("Object %d and %d will feel x:%.15f y:%.15f N\n", i, j, force_x, force_y);
-                gs->objects[0]->force.x += force_x;
-                gs->objects[0]->force.y += force_y;
+                //printf("Object %d and %d will feel x:%.15f y:%.15f N\n", i, j, force_x, force_y);
+                gs->objects[i]->force.x += force_x;
+                gs->objects[i]->force.y += force_y;
+                gs->objects[j]->force.x -= force_x;
+                gs->objects[j]->force.y -= force_y;
             }
         }
     }
     printf("Earth-> x: %.15f y:%.15f \n", gs->objects[0]->force.x, gs->objects[0]->force.y);
+    printf("Mars->  x: %.15f y:%.15f \n", gs->objects[1]->force.x, gs->objects[1]->force.y);
+    printf("Venus-> x: %.15f y:%.15f \n", gs->objects[2]->force.x, gs->objects[2]->force.y);
+
+    LAST = NOW;
+    NOW = SDL_GetPerformanceCounter();
+
+    delta_time = (double)((NOW - LAST)*1000 / SDL_GetPerformanceFrequency() );
 
     for(int i = 0; i < 3; i++) {
-        gs->objects[i]->force.y += 0.002;
-        gs->objects[i]->force.x += 0.002;
+        //gs->objects[i]->force.y += 0.002;
+        //gs->objects[i]->force.x += 0.002;
 
-        gs->objects[i]->acc.x = gs->objects[i]->force.x / gs->objects[i]->mass;
-        gs->objects[i]->vel.x += gs->objects[i]->acc.x;
-        gs->objects[i]->pos.x += gs->objects[i]->vel.x;
+        gs->objects[i]->acc.x = gs->objects[i]->force.x / gs->objects[i]->mass * 90000;
+        gs->objects[i]->vel.x += gs->objects[i]->acc.x * delta_time;
+        gs->objects[i]->pos.x = gs->objects[i]->pos.x + gs->objects[i]->vel.x * delta_time;
 
-        gs->objects[i]->acc.y = gs->objects[i]->force.y / gs->objects[i]->mass;
-        gs->objects[i]->vel.y += gs->objects[i]->acc.y;
-        gs->objects[i]->pos.y += gs->objects[i]->vel.y;
+        gs->objects[i]->acc.y = gs->objects[i]->force.y / gs->objects[i]->mass * 90000;
+        gs->objects[i]->vel.y += gs->objects[i]->acc.y * delta_time;
+        gs->objects[i]->pos.y = gs->objects[i]->pos.y + gs->objects[i]->vel.y * delta_time;
     }
 
 }
@@ -138,47 +156,58 @@ int main( int argc, char* args[] )
     Object *earth = object_create("res/planet.bmp", render, window, 5);
     Object *mars = object_create("res/planet.bmp", render, window, 10);
     Object *venus = object_create("res/planet.bmp", render, window, 15);
-    earth->pos.x = 0;
-    earth->pos.y = 0;
-    mars->pos.x = 10;
-    mars->pos.y = 25;
-    venus->pos.x = 25;
-    venus->pos.y = 50;
+    earth->pos.x = 50;
+    earth->pos.y = 50;
+    mars->pos.x = 100;
+    mars->pos.y = 100;
+    venus->pos.x = 150;
+    venus->pos.y = 150;
 
 
     game_state.objects[0] = earth;
     game_state.objects[1] = mars;
     game_state.objects[2] = venus;
 
+    NOW = SDL_GetPerformanceCounter();
+
+
     bool quit = false;
     while(!quit) {
         SDL_Event event;
-        while(SDL_PollEvent(&event))
-        {
-            if (event.type == SDL_QUIT || event.key.keysym.sym == SDLK_ESCAPE)
-            {
+        while(SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT || event.key.keysym.sym == SDLK_ESCAPE) {
                 quit = true;
                 break;
+            }
+            else if(event.type == SDL_KEYDOWN ) {
+                switch(event.key.keysym.sym ) { 
+                    case SDLK_SPACE: 
+                        //game_state.objects[0]->force.x += 20002;
+                        break;
+                    default:
+                        break;
+
+                }
             }
         }
 
         SDL_Rect e;
         e.x = earth->pos.x;
         e.y = earth->pos.y;
-        e.w = 5;
-        e.h = 5;
+        e.w = 10;
+        e.h = 10;
 
         SDL_Rect m;
         m.x = mars->pos.x;
         m.y = mars->pos.y;
-        m.w =5;
-        m.h =5;
+        m.w = 15;
+        m.h = 15;
 
         SDL_Rect v;
         v.x = venus->pos.x;
         v.y = venus->pos.y;
-        v.w =5;
-        v.h =5;
+        v.w = 20;
+        v.h = 20;
 
 
 

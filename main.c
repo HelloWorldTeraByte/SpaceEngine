@@ -41,7 +41,6 @@ typedef struct {
     float r;
 } BoundCircle;
 
-
 typedef struct {
     Vector2 pos;
     float viewport_w;
@@ -166,9 +165,13 @@ int update_physics(GameState *gs)
             float y_diff = plnt2->pos.y - plnt1->pos.y;
 
             if(i != j) {
-                double force_x = C_BG * plnt1->mass * plnt2->mass / x_diff;
-                float force_y = C_BG * plnt1->mass * plnt2->mass / y_diff;
-                //printf("Object %d and %d will feel x:%.15f y:%.15f N\n", i, j, force_x, force_y);
+                double force_x = 0;
+                double force_y = 0;
+                if(x_diff != 0)
+                    force_x = C_BG * plnt1->mass * plnt2->mass / x_diff;
+                if(y_diff != 0)
+                    force_y = C_BG * plnt1->mass * plnt2->mass / y_diff;
+                printf("Object %d and %d will feel x:%.15f y:%.15f N\n", i, j, force_x, force_y);
                 gs->objects[i]->force.x += force_x;
                 gs->objects[i]->force.y += force_y;
                 gs->objects[j]->force.x -= force_x;
@@ -176,13 +179,13 @@ int update_physics(GameState *gs)
             }
         }
     }
-    //printf("R->x: %.15f y:%.15f a.x: %.15f a.y: %.15f\n", gs->objects[0]->pos.x, gs->objects[0]->pos.y, gs->objects[0]->acc.x, gs->objects[0]->acc.y);
-    //printf("E->x: %.15f y:%.15f a.x: %.15f a.y: %.15f\n", gs->objects[1]->pos.x, gs->objects[1]->pos.y, gs->objects[1]->acc.x, gs->objects[1]->acc.y);
+    printf("R->x: %.15f y:%.15f a.x: %.15f a.y: %.15f\n", gs->objects[0]->pos.x, gs->objects[0]->pos.y, gs->objects[0]->acc.x, gs->objects[0]->acc.y);
+    printf("E->x: %.15f y:%.15f a.x: %.15f a.y: %.15f\n", gs->objects[1]->pos.x, gs->objects[1]->pos.y, gs->objects[1]->acc.x, gs->objects[1]->acc.y);
 
     time_last = time_now;
     time_now = SDL_GetPerformanceCounter();
 
-    delta_time = ((double)((time_now - time_last)*1000 / SDL_GetPerformanceFrequency())) * TIME_ACC;
+    delta_time = ((double)((time_now - time_last) * 1000 / SDL_GetPerformanceFrequency())) * TIME_ACC;
 
     for(int i = 0; i < ENTITIES; i++) {
         //gs->objects[i]->force.y += 0.002;
@@ -199,11 +202,13 @@ int update_physics(GameState *gs)
 
     if(intersect_rects(gs->objects[0], gs->objects[1])) {
         gs->objects[1]->acc = tmp;
-        gs->objects[0]->acc = tmp;
         gs->objects[1]->vel = tmp;
+        gs->objects[0]->acc = tmp;
         gs->objects[0]->vel = tmp;
         printf("Collision\n");
     }
+
+    //printf("R->x: %.15f y:%.15f F.x: %.15f F.y: %.15f\n", gs->objects[0]->pos.x, gs->objects[0]->pos.y, gs->objects[0]->force.x, gs->objects[0]->force.y);
 
     return 0;
 }
@@ -216,13 +221,14 @@ int update_render(GameState *gs, SDL_Renderer *render, Camera *camera)
         bool brender = false;
 
         SDL_Rect e;
-        e.w = gs->objects[i]->bb.w * 1;
-        e.h = gs->objects[i]->bb.h * 1;
+        e.w = gs->objects[i]->bb.w * camera->scale;
+        e.h = gs->objects[i]->bb.h * camera->scale;
         //printf("W:%d H:%d\n", e.w, e.h);
         //printf("Camera Scale %f\n", camera->scale);
 
-        e.x = 1 *(gs->objects[i]->pos.x - camera->pos.x );
-        e.y = 1 *(gs->objects[i]->pos.y - camera->pos.y);
+        e.x = camera->scale *(gs->objects[i]->pos.x - camera->pos.x );
+        e.y = camera->scale *(gs->objects[i]->pos.y - camera->pos.y );
+        
         //if(gs->objects[i]->pos.x + gs->objects[i]->bb.w/2 < camera->pos.x + camera->viewport_w / 2 && gs->objects[i]->pos.x > camera->pos.x - camera->viewport_w / 2)
         if(e.x + e.w > 0 && e.x < WIN_W && e.y + e.h > 0 && e.y < WIN_H) {
             brender = true;
@@ -260,18 +266,18 @@ int main( int argc, char* args[] )
 
     GameState game_state;
 
-    Object *earth = object_create("res/planet2.png", render, window, 3000);
+    Object *earth = object_create("res/planet2.png", render, window, 300);
     Object *rocket = object_create("res/rocket.png", render, window, 1);
     //Object *mars = object_create("res/planet2.png", render, window, 6.4e23);
     //Object *venus = object_create("res/planet2.png", render, window, 1.9e27);
 
     earth->pos.x = 0;
     earth->pos.y = 0;
-    earth->bb.w = 100;
-    earth->bb.h = 100;
+    earth->bb.w = 200;
+    earth->bb.h = 200;
 
     rocket->pos.x = 300;
-    rocket->pos.y = 300;
+    rocket->pos.y = 100;
     rocket->rot = C_PI/3;
     rocket->bb.w = 20;
     rocket->bb.h = 20;
@@ -294,6 +300,9 @@ int main( int argc, char* args[] )
 
 
     while(!bquit) {
+        update_physics(&game_state);
+        update_render(&game_state, render, &camera);
+
         SDL_Event event;
         while(SDL_PollEvent(&event)) {
 
@@ -304,9 +313,11 @@ int main( int argc, char* args[] )
             else if (event.key.keysym.sym == SDLK_ESCAPE)
                 update_physics(&game_state); 
 
-            switch(event.key.keysym.sym ) { 
+            switch(event.key.keysym.sym) { 
                 case SDLK_SPACE: 
-                    //game_state.objects[0]->force.x += 20002;
+                    game_state.objects[0]->force.x = 10;
+                    game_state.objects[0]->force.y = 10;
+                    printf("Boost off F.x:%f\n", game_state.objects[0]->force.x);
                     break;
                 case SDLK_RIGHT:
                     camera.pos.x -= 20;
@@ -333,9 +344,6 @@ int main( int argc, char* args[] )
                 }
             }
         }
-
-        update_physics(&game_state);
-        update_render(&game_state, render, &camera);
 
     }
 

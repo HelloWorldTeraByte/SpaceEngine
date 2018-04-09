@@ -2,7 +2,6 @@
 #include <stdbool.h>
 #include <math.h>
 #include <SDL2/SDL.h>
-#include <stdbool.h>
 #include <SDL2/SDL_image.h>
 
 #define WIN_W 720
@@ -15,13 +14,14 @@
 #define ENTITIES 2
 #define CAM_STEP_O 1.1
 #define CAM_STEP_I 0.1
+#define TIME_ACC 100
 
 #define C_BG 6.674e-11
 #define C_G 9.81
 #define C_PI 3.141592
 
-#define degreesToRadians(angleDegrees) ((angleDegrees) * C_PI / 180.0)
-#define radiansToDegrees(angleRadians) ((angleRadians) * 180.0 / C_PI)
+#define degrees_to_radians(deg) ((deg) * C_PI / 180.0)
+#define radians_to_degrees(rad) ((rad) * 180.0 / C_PI)
 
 Uint64 time_now;
 Uint64 time_last = 0;
@@ -35,7 +35,7 @@ typedef struct {
 typedef struct {
     float w;
     float h;
-} BoundBox;
+} Boundb_x;
 
 typedef struct {
     float r;
@@ -50,26 +50,26 @@ typedef struct {
 } Camera;
 
 typedef enum {
-    Collsion_Box,
+    Collsion_b_x,
     Collsion_Circle
 } CollisionType;
 
 typedef struct {
+    SDL_Texture *texture;
     float mass;
     float rot;
     Vector2 pos;
     Vector2 vel;
     Vector2 acc;
     Vector2 force;
-    SDL_Texture *texture;
+    Boundb_x bb;
+    BoundCircle bc;
     CollisionType ct;
-    BoundBox bb;
-
 } Object;
 
 typedef struct {
     Object *objects[MAX_OBJECTS];
-} GameObjects;
+} GameState;
 
 Object *object_create(char *path, SDL_Renderer *render, SDL_Window *window, float mass)
 {
@@ -119,7 +119,37 @@ Vector2 vector2_add(Vector2 a, Vector2 b)
     return result;
 }
 
-int update_physics(GameObjects *gs)
+
+bool valueInRange(int value, int min, int max)
+{ 
+    return (value >= min) && (value <= max); 
+}
+
+int intersect_rects(Object *a, Object *b)
+{
+    float a_x = a->pos.x;
+    float a_y = a->pos.y;
+    float b_x = b->pos.x;
+    float b_y = b->pos.y;
+
+    float a_w = a->bb.w;
+    float a_h = a->bb.h;
+    float b_w = b->bb.w;
+    float b_h = b->bb.h;
+
+    bool xOverlap = valueInRange(a_x, b_x, b_x + b_w) ||
+        valueInRange(b_x, a_x, a_x + a_w);
+
+    bool yOverlap = valueInRange(a_y, b_y, b_y + b_h) ||
+        valueInRange(b_y, a_y, a_y + a_h);
+    
+    //printf("A-> x:%f y:%f, w:%f h:%f\n", a_x, a_y, a_w, a_h);
+    //printf("B-> x:%f y:%f, w:%f h:%f\n", b_x, b_y, b_w, b_h);
+
+    return xOverlap && yOverlap;
+}
+
+int update_physics(GameState *gs)
 {
     Vector2 tmp;
     tmp.x = 0;
@@ -135,7 +165,7 @@ int update_physics(GameObjects *gs)
             float x_diff = plnt2->pos.x - plnt1->pos.x;
             float y_diff = plnt2->pos.y - plnt1->pos.y;
 
-            if(i !=j) {
+            if(i != j) {
                 double force_x = C_BG * plnt1->mass * plnt2->mass / x_diff;
                 float force_y = C_BG * plnt1->mass * plnt2->mass / y_diff;
                 //printf("Object %d and %d will feel x:%.15f y:%.15f N\n", i, j, force_x, force_y);
@@ -146,36 +176,39 @@ int update_physics(GameObjects *gs)
             }
         }
     }
-    //printf("Earth-> x: %.15f y:%.15f \n", gs->objects[0]->force.x, gs->objects[0]->force.y);
-    //printf("Mars->  x: %.15f y:%.15f \n", gs->objects[1]->force.x, gs->objects[1]->force.y);
-    //printf("Venus-> x: %.15f y:%.15f \n", gs->objects[2]->force.x, gs->objects[2]->force.y);
+    //printf("R->x: %.15f y:%.15f a.x: %.15f a.y: %.15f\n", gs->objects[0]->pos.x, gs->objects[0]->pos.y, gs->objects[0]->acc.x, gs->objects[0]->acc.y);
+    //printf("E->x: %.15f y:%.15f a.x: %.15f a.y: %.15f\n", gs->objects[1]->pos.x, gs->objects[1]->pos.y, gs->objects[1]->acc.x, gs->objects[1]->acc.y);
 
     time_last = time_now;
     time_now = SDL_GetPerformanceCounter();
 
-    delta_time = (double)((time_now - time_last)*1000 / SDL_GetPerformanceFrequency() );
+    delta_time = ((double)((time_now - time_last)*1000 / SDL_GetPerformanceFrequency())) * TIME_ACC;
 
     for(int i = 0; i < ENTITIES; i++) {
         //gs->objects[i]->force.y += 0.002;
         //gs->objects[i]->force.x += 0.002;
 
-        gs->objects[i]->acc.x = gs->objects[i]->force.x / gs->objects[i]->mass * 90000;
+        gs->objects[i]->acc.x = gs->objects[i]->force.x / gs->objects[i]->mass;
         gs->objects[i]->vel.x += gs->objects[i]->acc.x * delta_time;
-        gs->objects[i]->pos.x = gs->objects[i]->pos.x + gs->objects[i]->vel.x * delta_time;
+        gs->objects[i]->pos.x += gs->objects[i]->vel.x * delta_time;
 
-        gs->objects[i]->acc.y = gs->objects[i]->force.y / gs->objects[i]->mass * 90000;
+        gs->objects[i]->acc.y = gs->objects[i]->force.y / gs->objects[i]->mass;
         gs->objects[i]->vel.y += gs->objects[i]->acc.y * delta_time;
-        gs->objects[i]->pos.y = gs->objects[i]->pos.y + gs->objects[i]->vel.y * delta_time;
+        gs->objects[i]->pos.y += gs->objects[i]->vel.y * delta_time;
     }
 
-    for(int i = 0; i < ENTITIES; i++) {
-        for(int j = i; j < ENTITIES; j++) {
-        }
+    if(intersect_rects(gs->objects[0], gs->objects[1])) {
+        gs->objects[1]->acc = tmp;
+        gs->objects[0]->acc = tmp;
+        gs->objects[1]->vel = tmp;
+        gs->objects[0]->vel = tmp;
+        printf("Collision\n");
     }
+
     return 0;
 }
 
-int update_render(GameObjects *gs, SDL_Renderer *render, Camera *camera)
+int update_render(GameState *gs, SDL_Renderer *render, Camera *camera)
 {
     SDL_RenderClear(render);
 
@@ -183,13 +216,13 @@ int update_render(GameObjects *gs, SDL_Renderer *render, Camera *camera)
         bool brender = false;
 
         SDL_Rect e;
-        e.w = gs->objects[i]->bb.w * camera->scale;
-        e.h = gs->objects[i]->bb.h * camera->scale;
+        e.w = gs->objects[i]->bb.w * 1;
+        e.h = gs->objects[i]->bb.h * 1;
         //printf("W:%d H:%d\n", e.w, e.h);
         //printf("Camera Scale %f\n", camera->scale);
 
-        e.x = camera->scale *(camera->pos.x - gs->objects[i]->pos.x);
-        e.y = camera->scale *(camera->pos.y - gs->objects[i]->pos.y);
+        e.x = 1 *(gs->objects[i]->pos.x - camera->pos.x );
+        e.y = 1 *(gs->objects[i]->pos.y - camera->pos.y);
         //if(gs->objects[i]->pos.x + gs->objects[i]->bb.w/2 < camera->pos.x + camera->viewport_w / 2 && gs->objects[i]->pos.x > camera->pos.x - camera->viewport_w / 2)
         if(e.x + e.w > 0 && e.x < WIN_W && e.y + e.h > 0 && e.y < WIN_H) {
             brender = true;
@@ -201,17 +234,12 @@ int update_render(GameObjects *gs, SDL_Renderer *render, Camera *camera)
             SDL_SetRenderDrawColor(render, 0,255,0,255);
             SDL_RenderFillRect(render, &e);
             SDL_SetRenderDrawColor(render, 0,0,0,255);
-            SDL_RenderCopyEx(render, gs->objects[i]->texture, NULL, &e, radiansToDegrees(gs->objects[i]->rot), NULL, SDL_FLIP_NONE);
+            SDL_RenderCopyEx(render, gs->objects[i]->texture, NULL, &e, radians_to_degrees(gs->objects[i]->rot), NULL, SDL_FLIP_NONE);
         }
     }
 
     //printf("Camera X:%f Y:%f\n", camera->pos.x, camera->pos.y);
     //printf("Object X:%f Y:%f\n", gs->objects[1]->pos.x, gs->objects[1]->pos.y);
-
-
-    //SDL_RenderCopy(render, mars->texture, NULL, &e);
-    //SDL_RenderCopy(render, venus->texture, NULL, &v);
-
 
     SDL_RenderPresent(render);
     return 0;
@@ -230,37 +258,26 @@ int main( int argc, char* args[] )
     if(!render)
         perror("Cannot create a render");
 
-    GameObjects game_state;
+    GameState game_state;
 
-    Object *earth = object_create("res/planet2.png", render, window, 30);
+    Object *earth = object_create("res/planet2.png", render, window, 3000);
     Object *rocket = object_create("res/rocket.png", render, window, 1);
     //Object *mars = object_create("res/planet2.png", render, window, 6.4e23);
     //Object *venus = object_create("res/planet2.png", render, window, 1.9e27);
 
     earth->pos.x = 0;
     earth->pos.y = 0;
-    earth->bb.w = 200;
-    earth->bb.h = 200;
+    earth->bb.w = 100;
+    earth->bb.h = 100;
 
-    rocket->pos.x = 250;
-    rocket->pos.y = 250;
-    rocket->rot = C_PI/2;
+    rocket->pos.x = 300;
+    rocket->pos.y = 300;
+    rocket->rot = C_PI/3;
     rocket->bb.w = 20;
     rocket->bb.h = 20;
 
-    // mars->pos.x = 100;
-    // mars->pos.y = 100;
-    // mars->bb.w = 20;
-    // mars->bb.h = 20;
-
-    // venus->pos.x = 360;
-    // venus->pos.y = 300;
-    // venus->bb.w = 30;
-    // venus->bb.h = 30;
-
-
-    game_state.objects[0] = earth;
-    game_state.objects[1] = rocket;
+    game_state.objects[0] = rocket;
+    game_state.objects[1] = earth;
     //game_state.objects[2] = venus;
 
     time_now = SDL_GetPerformanceCounter();
@@ -269,7 +286,7 @@ int main( int argc, char* args[] )
     bool bquit = false;
 
     Camera camera;
-    camera.pos.x = 10;
+    camera.pos.x = 0;
     camera.pos.y = 0;
     camera.scale = 1;
     camera.viewport_w = WIN_W;
@@ -317,20 +334,6 @@ int main( int argc, char* args[] )
             }
         }
 
-        //   SDL_Rect m;
-        //   m.x = mars->pos.x;
-        //   m.y = mars->pos.y;
-        //   m.w = mars->bb.w;
-        //   m.h = mars->bb.h;
-
-        //   SDL_Rect v;
-        //   v.x = venus->pos.x;
-        //   v.y = venus->pos.y;
-        //   v.w = venus->bb.w;
-        //   v.h = venus->bb.h;
-
-
-
         update_physics(&game_state);
         update_render(&game_state, render, &camera);
 
@@ -339,11 +342,9 @@ int main( int argc, char* args[] )
     object_destroy(earth);
     object_destroy(rocket);
 
-    //   object_destroy(mars);
-    //   object_destroy(venus);
-
     SDL_DestroyRenderer(render);
     SDL_DestroyWindow(window);
     SDL_Quit();
+
     return 0;
 }
